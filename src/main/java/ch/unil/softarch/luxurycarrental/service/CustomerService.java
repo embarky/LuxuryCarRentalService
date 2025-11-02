@@ -18,34 +18,42 @@ public class CustomerService {
     @Inject
     private ApplicationState state;
 
-    // Create
+    // Create customer
     public Customer addCustomer(Customer customer) {
-        // Check for duplicate email
+        // Check duplicates (email, license, phone)
         boolean emailExists = state.getCustomers().values().stream()
                 .anyMatch(c -> c.getEmail().equals(customer.getEmail()));
-        if (emailExists) {
-            throw new WebApplicationException("Email already exists", 400);
-        }
+        if (emailExists) throw new WebApplicationException("Email already exists", 400);
 
-        // Check for duplicate driving license number
         boolean licenseExists = state.getCustomers().values().stream()
                 .anyMatch(c -> c.getDrivingLicenseNumber().equals(customer.getDrivingLicenseNumber()));
-        if (licenseExists) {
-            throw new WebApplicationException("Driving license number already exists", 400);
-        }
+        if (licenseExists) throw new WebApplicationException("Driving license number already exists", 400);
 
-        // Optionally check phone number uniqueness
         boolean phoneExists = state.getCustomers().values().stream()
                 .anyMatch(c -> c.getPhoneNumber().equals(customer.getPhoneNumber()));
-        if (phoneExists) {
-            throw new WebApplicationException("Phone number already exists", 400);
-        }
+        if (phoneExists) throw new WebApplicationException("Phone number already exists", 400);
 
-        // Set ID and creation date if missing
+        // Set ID and creation date
         if (customer.getId() == null) customer.setId(UUID.randomUUID());
         if (customer.getCreationDate() == null) customer.setCreationDate(LocalDateTime.now());
 
+        // Save customer
         state.getCustomers().put(customer.getId(), customer);
+
+        // --- Send confirmation email asynchronously ---
+        String to = customer.getEmail();
+        String subject = "Welcome to Luxury Car Rental!";
+        String body = "Hi " + customer.getFirstName() + ",\n\n" +
+                "Your account has been successfully created with the following details:\n" +
+                "Name: " + customer.getFirstName() + " " + customer.getLastName() + "\n" +
+                "Email: " + customer.getEmail() + "\n" +
+                "Phone: " + customer.getPhoneNumber() + "\n" +
+                "Driving License: " + customer.getDrivingLicenseNumber() + "\n\n" +
+                "Thank you for choosing Luxury Car Rental!\n\n" +
+                "Best regards,\nLuxury Car Rental Team";
+
+        EmailSender.sendEmailAsync(to, subject, body);
+
         return customer;
     }
 

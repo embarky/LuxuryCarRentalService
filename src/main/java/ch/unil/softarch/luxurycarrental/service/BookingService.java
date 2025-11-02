@@ -9,6 +9,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
 
+import java.io.ByteArrayOutputStream;
+import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.layout.Document;
+import com.itextpdf.layout.element.Paragraph;
+
 import java.util.Collection;
 import java.util.UUID;
 
@@ -28,29 +34,113 @@ public class BookingService {
     }
 
     public Booking createBooking(Booking booking) {
-        // Get car and customer from state
         Car car = state.getCars().get(booking.getCar().getId());
         Customer customer = state.getCustomers().get(booking.getCustomer().getId());
 
-        // --- Validation ---
         if (car == null) throw new WebApplicationException("Car does not exist", 400);
         if (customer == null) throw new WebApplicationException("Customer does not exist", 400);
         if (car.getStatus() != CarStatus.AVAILABLE) throw new WebApplicationException("Car is not available", 400);
-        if (customer.getBalance() < booking.getDepositAmount()) throw new WebApplicationException("Insufficient balance for deposit", 400);
-        if (booking.getStartDate() == null || booking.getEndDate() == null) throw new WebApplicationException("Start date and end date are required", 400);
-        if (booking.getEndDate().isBefore(booking.getStartDate())) throw new WebApplicationException("End date must be after start date", 400);
+        if (customer.getBalance() < booking.getDepositAmount()) throw new WebApplicationException("Insufficient balance", 400);
+        if (booking.getStartDate() == null || booking.getEndDate() == null)
+            throw new WebApplicationException("Start date and end date are required", 400);
+        if (booking.getEndDate().isBefore(booking.getStartDate()))
+            throw new WebApplicationException("End date must be after start date", 400);
 
-        // --- Update customer and car ---
+        // 更新余额和车辆状态
         customer.setBalance(customer.getBalance() - booking.getDepositAmount());
         car.setStatus(CarStatus.UNAVAILABLE);
 
-        // --- Set booking fields ---
         booking.setBookingStatus(BookingStatus.CONFIRMED);
         booking.setPaymentStatus(PaymentStatus.PENDING);
         if (booking.getBookingId() == null) booking.setBookingId(UUID.randomUUID());
 
-        // --- Add booking to state ---
         state.getBookings().put(booking.getBookingId(), booking);
+
+        // --- 准备 HTML 邮件 ---
+        String htmlBody = "<h2>Booking Confirmation</h2>" +
+                "<p>Hi <b>" + customer.getFirstName() + " " + customer.getLastName() + "</b>,</p>" +
+                "<p>Your booking has been <b>confirmed</b>! Here are the details:</p>" +
+                "<h3>Car Details</h3>" +
+                "<table border='1' cellpadding='5'>" +
+                "<tr><td>Brand & Model</td><td>" + car.getCarType().getBrand() + " " + car.getCarType().getModel() + "</td></tr>" +
+                "<tr><td>Category</td><td>" + car.getCarType().getCategory() + "</td></tr>" +
+                "<tr><td>Engine</td><td>" + car.getCarType().getEngine() + "</td></tr>" +
+                "<tr><td>Power</td><td>" + car.getCarType().getPower() + " HP</td></tr>" +
+                "<tr><td>Max Speed</td><td>" + car.getCarType().getMaxSpeed() + " km/h</td></tr>" +
+                "<tr><td>Seats</td><td>" + car.getCarType().getSeats() + "</td></tr>" +
+                "<tr><td>Transmission</td><td>" + car.getCarType().getTransmission() + "</td></tr>" +
+                "<tr><td>Drive Type</td><td>" + car.getCarType().getDriveType() + "</td></tr>" +
+                "<tr><td>Color</td><td>" + car.getColor() + "</td></tr>" +
+                "<tr><td>License Plate</td><td>" + car.getLicensePlate() + "</td></tr>" +
+                "<tr><td>VIN</td><td>" + car.getVin() + "</td></tr>" +
+                "<tr><td>Insurance Expiry</td><td>" + car.getInsuranceExpiryDate() + "</td></tr>" +
+                "</table>" +
+                "<h3>Booking Details</h3>" +
+                "<table border='1' cellpadding='5'>" +
+                "<tr><td>Start Date</td><td>" + booking.getStartDate() + "</td></tr>" +
+                "<tr><td>End Date</td><td>" + booking.getEndDate() + "</td></tr>" +
+                "<tr><td>Deposit</td><td>" + booking.getDepositAmount() + "</td></tr>" +
+                "<tr><td>Total Cost</td><td>" + booking.getTotalCost() + "</td></tr>" +
+                "<tr><td>Payment Status</td><td>" + booking.getPaymentStatus() + "</td></tr>" +
+                "</table>" +
+                "<h3>Customer Details</h3>" +
+                "<table border='1' cellpadding='5'>" +
+                "<tr><td>Name</td><td>" + customer.getFirstName() + " " + customer.getLastName() + "</td></tr>" +
+                "<tr><td>Email</td><td>" + customer.getEmail() + "</td></tr>" +
+                "<tr><td>Phone</td><td>" + customer.getPhoneNumber() + "</td></tr>" +
+                "<tr><td>Address</td><td>" + customer.getBillingAddress() + "</td></tr>" +
+                "<tr><td>Driving License</td><td>" + customer.getDrivingLicenseNumber() + " (Expires: " + customer.getDrivingLicenseExpiryDate() + ")</td></tr>" +
+                "</table>" +
+                "<p>Thank you for choosing <b>Luxury Car Rental</b>!</p>";
+
+        // --- 生成 PDF 附件 ---
+        byte[] pdfBytes;
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document doc = new Document(pdfDoc);
+            doc.add(new Paragraph("Booking Confirmation"));
+            doc.add(new Paragraph("Customer: " + customer.getFirstName() + " " + customer.getLastName()));
+            doc.add(new Paragraph("Email: " + customer.getEmail()));
+            doc.add(new Paragraph("Phone: " + customer.getPhoneNumber()));
+            doc.add(new Paragraph("Address: " + customer.getBillingAddress()));
+            doc.add(new Paragraph("Driving License: " + customer.getDrivingLicenseNumber() +
+                    " (Expiry: " + customer.getDrivingLicenseExpiryDate() + ")"));
+            doc.add(new Paragraph(" "));
+            doc.add(new Paragraph("Car Details: " + car.getCarType().getBrand() + " " + car.getCarType().getModel()));
+            doc.add(new Paragraph("Category: " + car.getCarType().getCategory()));
+            doc.add(new Paragraph("Engine: " + car.getCarType().getEngine() + ", Power: " + car.getCarType().getPower() + " HP"));
+            doc.add(new Paragraph("Max Speed: " + car.getCarType().getMaxSpeed() + " km/h"));
+            doc.add(new Paragraph("Seats: " + car.getCarType().getSeats()));
+            doc.add(new Paragraph("Transmission: " + car.getCarType().getTransmission()));
+            doc.add(new Paragraph("Drive Type: " + car.getCarType().getDriveType()));
+            doc.add(new Paragraph("Color: " + car.getColor()));
+            doc.add(new Paragraph("License Plate: " + car.getLicensePlate()));
+            doc.add(new Paragraph("VIN: " + car.getVin()));
+            doc.add(new Paragraph("Insurance Expiry: " + car.getInsuranceExpiryDate()));
+            doc.add(new Paragraph(" "));
+            doc.add(new Paragraph("Booking Details:"));
+            doc.add(new Paragraph("Start Date: " + booking.getStartDate()));
+            doc.add(new Paragraph("End Date: " + booking.getEndDate()));
+            doc.add(new Paragraph("Deposit: " + booking.getDepositAmount()));
+            doc.add(new Paragraph("Total Cost: " + booking.getTotalCost()));
+            doc.add(new Paragraph("Payment Status: " + booking.getPaymentStatus()));
+            doc.close();
+            pdfBytes = baos.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            pdfBytes = new byte[0];
+        }
+
+        // --- 异步发送邮件 ---
+        final byte[] finalPdfBytes = pdfBytes;
+        new Thread(() -> EmailSender.sendEmailWithAttachment(
+                customer.getEmail(),
+                "Booking Confirmation - Luxury Car Rental",
+                htmlBody,
+                finalPdfBytes
+        )).start();
+
         return booking;
     }
 

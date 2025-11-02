@@ -16,6 +16,7 @@ public class AdminService {
     private ApplicationState state;
 
     // Create
+    // AdminService.java
     public Admin addAdmin(Admin admin) {
         // Check for duplicate username
         boolean usernameExists = state.getAdmins().values().stream()
@@ -36,7 +37,21 @@ public class AdminService {
         if (admin.getCreatedAt() == null) admin.setCreatedAt(LocalDateTime.now());
         if (admin.getUpdatedAt() == null) admin.setUpdatedAt(LocalDateTime.now());
 
+        // Save admin
         state.getAdmins().put(admin.getId(), admin);
+
+        // --- Send welcome email ---
+        String to = admin.getEmail();
+        String subject = "Welcome to Luxury Car Rental Admin Panel";
+        String body = "Hi " + admin.getName() + ",\n\n" +
+                "Your administrator account has been successfully created.\n" +
+                "Username: " + admin.getUsername() + "\n" +
+                "Please keep your password secure.\n\n" +
+                "Best regards,\nLuxury Car Rental Team";
+
+        // Call the mail sending tool
+        EmailSender.sendEmail(to, subject, body);
+
         return admin;
     }
 
