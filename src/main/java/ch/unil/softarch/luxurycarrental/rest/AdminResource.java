@@ -81,16 +81,31 @@ public class AdminResource {
         }
     }
 
-    // Change password
-    public static class ChangePasswordRequest {
-        public String oldPassword;
-        public String newPassword;
+    /**
+     * Request a password reset code to be sent to admin's email
+     */
+    @POST
+    @Path("/{id}/password-reset-code")
+    public Response sendPasswordResetCode(@PathParam("id") UUID id) {
+        adminService.sendAdminPasswordResetCode(id);
+        return Response.ok(Map.of("message", "Verification code sent to admin email")).build();
     }
+
+    /**
+     * Reset admin password using verification code
+     */
     @PUT
-    @Path("/{id}/change-password")
-    public Response changePassword(@PathParam("id") UUID id, ChangePasswordRequest request) {
-        adminService.changePassword(id, request.oldPassword, request.newPassword);
-        return Response.ok(Map.of("message", "Password changed successfully")).build();
+    @Path("/{id}/reset-password")
+    public Response resetPasswordWithCode(@PathParam("id") UUID id, Map<String, String> body) {
+        String code = body.get("code");
+        String newPassword = body.get("newPassword");
+
+        if (code == null || newPassword == null) {
+            throw new WebApplicationException("Missing required fields", 400);
+        }
+
+        adminService.resetAdminPasswordWithCode(id, code, newPassword);
+        return Response.ok(Map.of("message", "Admin password reset successfully")).build();
     }
 
 }

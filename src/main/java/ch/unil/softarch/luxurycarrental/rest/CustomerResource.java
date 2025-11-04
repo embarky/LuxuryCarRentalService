@@ -82,12 +82,6 @@ public class CustomerResource {
         }
     }
 
-    // Change password
-    public static class ChangePasswordRequest {
-        public String oldPassword;
-        public String newPassword;
-    }
-
     // --- Request password reset code ---
     @POST
     @Path("/{id}/password-reset-code")

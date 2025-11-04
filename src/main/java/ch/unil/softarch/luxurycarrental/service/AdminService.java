@@ -6,6 +6,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -104,15 +105,77 @@ public class AdminService {
     }
 
     /**
-     * Change admin password by ID
+     * Send password reset code to admin's email.
+     * This code is valid for 5 minutes and can only be used once.
      */
-    public boolean changePassword(UUID adminId, String oldPassword, String newPassword) {
+    public void sendAdminPasswordResetCode(UUID adminId) {
         Admin admin = state.getAdmins().get(adminId);
-        if (admin == null) return false; // admin not found
-        if (!admin.getPassword().equals(oldPassword)) return false; // wrong old password
+        if (admin == null) {
+            throw new WebApplicationException("Admin account not found", 404);
+        }
 
+        // Generate random 6-digit code
+        String code = String.format("%06d", new Random().nextInt(999999));
+
+        // Save code to application state
+        state.getPasswordResetCodes().put(adminId,
+                new ApplicationState.VerificationCode(code, LocalDateTime.now()));
+
+        // Prepare email
+        String subject = "Admin Password Reset Code";
+        String body = "Dear " + admin.getName() + ",\n\n" +
+                "A request has been made to reset your administrator password.\n" +
+                "Your password reset code is: " + code + "\n" +
+                "This code will expire in 5 minutes and can only be used once.\n\n" +
+                "If you did not request this change, please contact system support immediately.\n\n" +
+                "Luxury Car Rental System";
+
+        // Send email asynchronously
+        EmailSender.sendEmailAsync(admin.getEmail(), subject, body);
+    }
+
+    /**
+     * Reset admin password using verification code.
+     * The code is valid for 5 minutes and can only be used once.
+     * Sends a confirmation email after successful password change.
+     */
+    public void resetAdminPasswordWithCode(UUID adminId, String code, String newPassword) {
+        Admin admin = state.getAdmins().get(adminId);
+        if (admin == null) {
+            throw new WebApplicationException("Admin account not found", 404);
+        }
+
+        ApplicationState.VerificationCode stored = state.getPasswordResetCodes().get(adminId);
+        if (stored == null) {
+            throw new WebApplicationException("No verification code found", 400);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        // Check expiration (>= 5 minutes)
+        if (Duration.between(stored.getCreatedAt(), now).toMinutes() >= 5) {
+            state.getPasswordResetCodes().remove(adminId);
+            throw new WebApplicationException("Verification code has expired", 400);
+        }
+
+        // Verify code correctness
+        if (!stored.getCode().equals(code)) {
+            throw new WebApplicationException("Invalid verification code", 400);
+        }
+
+        // Update password
         admin.setPassword(newPassword);
-        return true;
+
+        // Invalidate code after use
+        state.getPasswordResetCodes().remove(adminId);
+
+        // Send confirmation email
+        String subject = "Administrator Password Changed Successfully";
+        String body = "Dear " + admin.getName() + ",\n\n" +
+                "Your administrator password has been successfully changed.\n" +
+                "If you did not perform this change, contact system support immediately.\n\n" +
+                "Luxury Car Rental System";
+
+        EmailSender.sendEmailAsync(admin.getEmail(), subject, body);
     }
 
 
