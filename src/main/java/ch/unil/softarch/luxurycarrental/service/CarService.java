@@ -2,6 +2,7 @@ package ch.unil.softarch.luxurycarrental.service;
 
 import ch.unil.softarch.luxurycarrental.domain.ApplicationState;
 import ch.unil.softarch.luxurycarrental.domain.entities.Car;
+import ch.unil.softarch.luxurycarrental.domain.entities.CarType;
 import ch.unil.softarch.luxurycarrental.domain.enums.BookingStatus;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -10,6 +11,7 @@ import jakarta.ws.rs.WebApplicationException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class CarService {
@@ -95,5 +97,58 @@ public class CarService {
 
         // --- Safe to delete if no bookings depend on this car ---
         return state.getCars().remove(id) != null;
+    }
+
+    public List<Car> searchCars(
+            String q,                // main fuzzy query, matches brand/model/licensePlate/vin/color/carType fields
+            String status,           // optional car status filter (e.g. "AVAILABLE")
+            Double minPrice,         // optional min dailyRentalPrice
+            Double maxPrice,         // optional max dailyRentalPrice
+            UUID carTypeId           // optional exact carType id filter
+    ) {
+        // normalize search term
+        String term = (q == null || q.isBlank()) ? null : q.trim().toLowerCase();
+
+        return state.getCars().values().stream()
+                .filter(car -> {
+                    // filter by status if provided
+                    if (status != null && !status.isBlank()) {
+                        try {
+                            if (!car.getStatus().name().equalsIgnoreCase(status)) return false;
+                        } catch (Exception ignored) { return false; }
+                    }
+
+                    // filter by price range
+                    if (minPrice != null && car.getDailyRentalPrice() < minPrice) return false;
+                    if (maxPrice != null && car.getDailyRentalPrice() > maxPrice) return false;
+
+                    // filter by carType id if provided
+                    if (carTypeId != null) {
+                        if (car.getCarType() == null || !carTypeId.equals(car.getCarType().getId())) return false;
+                    }
+
+                    // if no fuzzy term provided, keep (already passed other filters)
+                    if (term == null) return true;
+
+                    // match against multiple fields (fuzzy: contains, case-insensitive)
+                    if (car.getLicensePlate() != null && car.getLicensePlate().toLowerCase().contains(term)) return true;
+                    if (car.getVin() != null && car.getVin().toLowerCase().contains(term)) return true;
+                    if (car.getColor() != null && car.getColor().toLowerCase().contains(term)) return true;
+
+                    // match carType fields if present
+                    CarType ct = car.getCarType();
+                    if (ct != null) {
+                        if (ct.getBrand() != null && ct.getBrand().toLowerCase().contains(term)) return true;
+                        if (ct.getModel() != null && ct.getModel().toLowerCase().contains(term)) return true;
+                        if (ct.getCategory() != null && ct.getCategory().toLowerCase().contains(term)) return true;
+                    }
+
+                    // match numeric fields stringified (e.g., power, seats) — optional convenience
+                    if (String.valueOf(car.getDailyRentalPrice()).contains(term)) return true;
+                    if (car.getId() != null && car.getId().toString().toLowerCase().contains(term)) return true;
+
+                    return false;
+                })
+                .collect(Collectors.toList());
     }
 }

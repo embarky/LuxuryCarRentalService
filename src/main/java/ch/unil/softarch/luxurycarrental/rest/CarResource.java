@@ -74,4 +74,30 @@ public class CarResource {
     public boolean removeCar(@PathParam("id") UUID id) {
         return carService.removeCar(id);
     }
+
+    /**
+     * Fuzzy search / filter cars.
+     * Example query:
+     * GET /cars/search?q=camry&maxPrice=150&status=AVAILABLE
+     */
+    @GET
+    @Path("/search")
+    public List<Car> searchCars(
+            @QueryParam("q") String q,
+            @QueryParam("status") String status,
+            @QueryParam("minPrice") Double minPrice,
+            @QueryParam("maxPrice") Double maxPrice,
+            @QueryParam("carTypeId") String carTypeIdStr  // accept as string and convert
+    ) {
+        UUID carTypeId = null;
+        if (carTypeIdStr != null && !carTypeIdStr.isBlank()) {
+            try {
+                carTypeId = UUID.fromString(carTypeIdStr);
+            } catch (IllegalArgumentException e) {
+                throw new WebApplicationException("Invalid carTypeId UUID", 400);
+            }
+        }
+
+        return carService.searchCars(q, status, minPrice, maxPrice, carTypeId);
+    }
 }
