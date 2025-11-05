@@ -51,7 +51,7 @@ public class AdminService {
                 "Best regards,\nLuxury Car Rental Team";
 
         // Call the mail sending tool
-        EmailSender.sendEmail(to, subject, body);
+        EmailSender.sendEmailAsync(to, subject, body);
 
         return admin;
     }

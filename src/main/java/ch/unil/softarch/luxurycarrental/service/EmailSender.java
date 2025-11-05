@@ -10,8 +10,8 @@ import java.util.Properties;
 
 public class EmailSender {
 
-    private static final String USERNAME = "luxurycarrentalstore@gmail.com";       // 你的 Gmail
-    private static final String APP_PASSWORD = "ctdb jwih xwbz feup"; // Gmail 应用专用密码
+    private static final String USERNAME = "luxurycarrentalstore@gmail.com";       // Gmail
+    private static final String APP_PASSWORD = "ctdb jwih xwbz feup"; // Gmail pw
 
     public static void sendEmail(String to, String subject, String body) {
         Properties props = new Properties();
