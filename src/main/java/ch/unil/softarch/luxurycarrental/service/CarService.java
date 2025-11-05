@@ -2,6 +2,7 @@ package ch.unil.softarch.luxurycarrental.service;
 
 import ch.unil.softarch.luxurycarrental.domain.ApplicationState;
 import ch.unil.softarch.luxurycarrental.domain.entities.Car;
+import ch.unil.softarch.luxurycarrental.domain.enums.BookingStatus;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
@@ -70,8 +71,29 @@ public class CarService {
         return existing;
     }
 
-    // Delete
+    // Delete a Car by its ID
     public boolean removeCar(UUID id) {
+        Car existing = state.getCars().get(id);
+        if (existing == null) {
+            throw new WebApplicationException("Car not found", 404);
+        }
+
+        // --- Check if there are active bookings related to this car ---
+        boolean hasActiveBookings = state.getBookings().values().stream().anyMatch(booking ->
+                booking.getCar() != null &&
+                        id.equals(booking.getCar().getId()) &&
+                        booking.getBookingStatus() != null &&
+                        (booking.getBookingStatus() == BookingStatus.PENDING ||
+                                booking.getBookingStatus() == BookingStatus.CONFIRMED ||
+                                booking.getBookingStatus() == BookingStatus.COMPLETED)
+        );
+
+        if (hasActiveBookings) {
+            throw new WebApplicationException(
+                    "Cannot delete Car: there are existing bookings linked to this car", 400);
+        }
+
+        // --- Safe to delete if no bookings depend on this car ---
         return state.getCars().remove(id) != null;
     }
 }

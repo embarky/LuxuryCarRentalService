@@ -9,7 +9,6 @@ import jakarta.ws.rs.WebApplicationException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class CarTypeService {
@@ -57,8 +56,24 @@ public class CarTypeService {
         return existing;
     }
 
-    // Delete
+    // Delete a CarType by its ID
     public boolean removeCarType(UUID id) {
+        CarType existing = state.getCarTypes().get(id);
+        if (existing == null) {
+            throw new WebApplicationException("CarType not found", 404);
+        }
+
+        // --- Check if any Car still uses this CarType ---
+        boolean inUseByCars = state.getCars().values().stream()
+                .anyMatch(car -> car.getCarType() != null && id.equals(car.getCarType().getId()));
+
+        if (inUseByCars) {
+            // Prevent deletion if there are cars using this type
+            throw new WebApplicationException(
+                    "Cannot delete CarType: there are cars still using this type", 400);
+        }
+
+        // --- Safe to delete if no cars are linked to this CarType ---
         return state.getCarTypes().remove(id) != null;
     }
 }
