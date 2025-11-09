@@ -79,6 +79,22 @@
             <type>pom</type>
         </dependency>
         <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20230227</version>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish.jersey.media</groupId>
+            <artifactId>jersey-media-multipart</artifactId>
+            <version>3.1.1</version>
+        </dependency>
+        <!-- Apache HttpClient 5 -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <version>5.2.1</version>
+        </dependency>
+        <dependency>
             <groupId>ch.unil.softarch.luxurycarrental</groupId>
             <artifactId>LuxuryCarRentalDomain</artifactId>
             <version>1.0-SNAPSHOT</version>

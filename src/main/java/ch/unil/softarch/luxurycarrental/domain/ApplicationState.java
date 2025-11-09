@@ -68,13 +68,13 @@ public class ApplicationState {
         // Customers (with password)
         Customer customer1 = new Customer(UUID.randomUUID(), "Alice", "Wang", "alice@example.com",
                 "alicePass123", "+41791234567", "CH-123456", LocalDate.of(2028, 6, 30),
-                29, true, "Rue de Lausanne 45, Lausanne", 2000.0,
+                29, true, "Rue de Lausanne 45, Lausanne", 5000.0,
                 LocalDateTime.now());
         customers.put(customer1.getId(), customer1);
 
         Customer customer2 = new Customer(UUID.randomUUID(), "Bob", "Li", "bob@example.com",
                 "bobPass456", "+41797654321", "CH-654321", LocalDate.of(2029, 3, 15),
-                35, true, "Rue de Genève 12, Lausanne", 1500.0,
+                35, true, "Rue de Genève 12, Lausanne", 2500.0,
                 LocalDateTime.now());
         customers.put(customer2.getId(), customer2);
 

@@ -7,6 +7,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -26,9 +27,9 @@ public class BookingResource {
     }
 
     @GET
-    @Path("/{id}")
-    public Booking getBooking(@PathParam("id") UUID id) {
-        return bookingService.getBooking(id);
+    @Path("/{bookingId}")
+    public Booking getBooking(@PathParam("bookingId") UUID bookingId) {
+        return bookingService.getBooking(bookingId);
     }
 
     @GET
@@ -43,37 +44,70 @@ public class BookingResource {
         return bookingService.getBookingsByCarId(carId);
     }
 
+    public static class BookingRequest {
+        public UUID customerId;
+        public UUID carId;
+        public LocalDate startDate;
+        public LocalDate endDate;
+    }
     @POST
-    public Booking createBooking(Booking booking) {
-        return bookingService.createBooking(booking);
+    public Response createBooking(BookingRequest request) {
+        Booking booking = bookingService.createBooking(
+                request.customerId,
+                request.carId,
+                request.startDate,
+                request.endDate
+        );
+        return Response.ok(booking).build();
     }
 
     @PUT
-    @Path("/{id}")
-    public Booking updateBooking(@PathParam("id") UUID id, Booking update) {
-        return bookingService.updateBooking(id, update);
+    @Path("/{bookingId}")
+    public Booking updateBooking(@PathParam("bookingId") UUID bookingId, Booking update) {
+        return bookingService.updateBooking(bookingId, update);
     }
 
     @DELETE
-    @Path("/{id}")
-    public Response removeBooking(@PathParam("id") UUID id) {
-        boolean removed = bookingService.removeBooking(id);
+    @Path("/{bookingId}")
+    public Response removeBooking(@PathParam("bookingId") UUID bookingId) {
+        boolean removed = bookingService.removeBooking(bookingId);
         if (removed) return Response.ok("Booking removed successfully").build();
         return Response.status(Response.Status.NOT_FOUND).entity("Booking not found").build();
     }
 
     // ---------------- Operations ----------------
+    @POST
+    @Path("/{bookingId}/pay")
+    public Response payBooking(@PathParam("bookingId") UUID bookingId) {
+        Booking booking = bookingService.payForBooking(bookingId);
+        return Response.ok(booking).build();
+    }
+
     @PUT
-    @Path("/complete/{id}")
-    public Response completeBooking(@PathParam("id") UUID id) {
-        bookingService.completeBooking(id);
+    @Path("/{bookingId}/complete")
+    public Response completeBooking(@PathParam("bookingId") UUID bookingId) {
+        bookingService.completeBooking(bookingId);
         return Response.ok("Booking completed successfully").build();
     }
 
     @PUT
-    @Path("/cancel/{id}")
-    public Response cancelBooking(@PathParam("id") UUID id) {
-        bookingService.cancelBooking(id);
+    @Path("/{bookingId}/cancel")
+    public Response cancelBooking(@PathParam("bookingId") UUID bookingId) {
+        bookingService.cancelBooking(bookingId);
         return Response.ok("Booking canceled and deposit refunded").build();
+    }
+
+    @POST
+    @Path("/{bookingId}/reject")
+    public Response rejectBooking(@PathParam("bookingId") UUID bookingId, @QueryParam("reason") String reason) {
+        Booking booking = bookingService.rejectBooking(bookingId, reason);
+        return Response.ok(booking).build();
+    }
+
+    @PUT
+    @Path("/{bookingId}/confirm")
+    public Response confirmBooking(@PathParam("bookingId") UUID bookingId) {
+        bookingService.confirmBooking(bookingId);
+        return Response.ok( "Booking confirmed successfully").build();
     }
 }

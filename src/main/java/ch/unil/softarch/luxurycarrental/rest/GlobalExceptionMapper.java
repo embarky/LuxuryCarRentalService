@@ -1,6 +1,5 @@
 package ch.unil.softarch.luxurycarrental.rest;
 
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -9,7 +8,6 @@ import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.core.UriInfo;
 
 import java.time.LocalDateTime;
-import java.util.logging.Logger;
 
 /**
  * Global exception handler for the REST API.

@@ -15,10 +15,12 @@ import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.layout.Document;
 import com.itextpdf.layout.element.Paragraph;
 
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.time.LocalDate;
 
 @ApplicationScoped
 public class BookingService {
@@ -49,64 +51,45 @@ public class BookingService {
                 .collect(Collectors.toList());
     }
 
-    public Booking createBooking(Booking booking) {
-        Car car = state.getCars().get(booking.getCar().getId());
-        Customer customer = state.getCustomers().get(booking.getCustomer().getId());
+    public Booking createBooking(UUID customerId, UUID carId,
+                                 LocalDate startDate, LocalDate endDate) {
 
-        if (car == null) throw new WebApplicationException("Car does not exist", 400);
+        // --- Retrieve entities by ID ---
+        Customer customer = state.getCustomers().get(customerId);
+        Car car = state.getCars().get(carId);
+
         if (customer == null) throw new WebApplicationException("Customer does not exist", 400);
+        if (car == null) throw new WebApplicationException("Car does not exist", 400);
         if (car.getStatus() != CarStatus.AVAILABLE) throw new WebApplicationException("Car is not available", 400);
-        if (customer.getBalance() < booking.getDepositAmount()) throw new WebApplicationException("Insufficient balance", 400);
-        if (booking.getStartDate() == null || booking.getEndDate() == null)
+        if (startDate == null || endDate == null)
             throw new WebApplicationException("Start date and end date are required", 400);
-        if (booking.getEndDate().isBefore(booking.getStartDate()))
+        if (endDate.isBefore(startDate))
             throw new WebApplicationException("End date must be after start date", 400);
 
+        // --- Calculate total cost and deposit based on car's own values ---
+        long days = ChronoUnit.DAYS.between(startDate, endDate) + 1; // inclusive
+        double totalCost = car.getDailyRentalPrice() * days;
+        double depositAmount = car.getDepositAmount();
 
+        // --- Create booking ---
+        Booking booking = new Booking();
+        booking.setBookingId(UUID.randomUUID());
+        booking.setCustomer(customer);
+        booking.setCar(car);
+        booking.setStartDate(startDate);
+        booking.setEndDate(endDate);
+        booking.setDepositAmount(depositAmount);
+        booking.setTotalCost(totalCost);
         booking.setBookingStatus(BookingStatus.PENDING);
         booking.setPaymentStatus(PaymentStatus.PENDING);
-        if (booking.getBookingId() == null) booking.setBookingId(UUID.randomUUID());
 
         state.getBookings().put(booking.getBookingId(), booking);
 
-        // --- Prepare HTML mail ---
-        String htmlBody = "<h2>Booking Confirmation</h2>" +
+        // --- Prepare email and PDF ---
+        String htmlBody = "<h2>Booking Created</h2>" +
                 "<p>Hi <b>" + customer.getFirstName() + " " + customer.getLastName() + "</b>,</p>" +
-                "<p>Your booking has been <b>confirmed</b>! Here are the details:</p>" +
-                "<h3>Car Details</h3>" +
-                "<table border='1' cellpadding='5'>" +
-                "<tr><td>Brand & Model</td><td>" + car.getCarType().getBrand() + " " + car.getCarType().getModel() + "</td></tr>" +
-                "<tr><td>Category</td><td>" + car.getCarType().getCategory() + "</td></tr>" +
-                "<tr><td>Engine</td><td>" + car.getCarType().getEngine() + "</td></tr>" +
-                "<tr><td>Power</td><td>" + car.getCarType().getPower() + " HP</td></tr>" +
-                "<tr><td>Max Speed</td><td>" + car.getCarType().getMaxSpeed() + " km/h</td></tr>" +
-                "<tr><td>Seats</td><td>" + car.getCarType().getSeats() + "</td></tr>" +
-                "<tr><td>Transmission</td><td>" + car.getCarType().getTransmission() + "</td></tr>" +
-                "<tr><td>Drive Type</td><td>" + car.getCarType().getDriveType() + "</td></tr>" +
-                "<tr><td>Color</td><td>" + car.getColor() + "</td></tr>" +
-                "<tr><td>License Plate</td><td>" + car.getLicensePlate() + "</td></tr>" +
-                "<tr><td>VIN</td><td>" + car.getVin() + "</td></tr>" +
-                "<tr><td>Insurance Expiry</td><td>" + car.getInsuranceExpiryDate() + "</td></tr>" +
-                "</table>" +
-                "<h3>Booking Details</h3>" +
-                "<table border='1' cellpadding='5'>" +
-                "<tr><td>Start Date</td><td>" + booking.getStartDate() + "</td></tr>" +
-                "<tr><td>End Date</td><td>" + booking.getEndDate() + "</td></tr>" +
-                "<tr><td>Deposit</td><td>" + booking.getDepositAmount() + "</td></tr>" +
-                "<tr><td>Total Cost</td><td>" + booking.getTotalCost() + "</td></tr>" +
-                "<tr><td>Payment Status</td><td>" + booking.getPaymentStatus() + "</td></tr>" +
-                "</table>" +
-                "<h3>Customer Details</h3>" +
-                "<table border='1' cellpadding='5'>" +
-                "<tr><td>Name</td><td>" + customer.getFirstName() + " " + customer.getLastName() + "</td></tr>" +
-                "<tr><td>Email</td><td>" + customer.getEmail() + "</td></tr>" +
-                "<tr><td>Phone</td><td>" + customer.getPhoneNumber() + "</td></tr>" +
-                "<tr><td>Address</td><td>" + customer.getBillingAddress() + "</td></tr>" +
-                "<tr><td>Driving License</td><td>" + customer.getDrivingLicenseNumber() + " (Expires: " + customer.getDrivingLicenseExpiryDate() + ")</td></tr>" +
-                "</table>" +
-                "<p>Thank you for choosing <b>Luxury Car Rental</b>!</p>";
+                "<p>Your booking has been <b>created</b> successfully! It is now <b>pending confirmation and payment</b>. Here are the details:</p>";
 
-        // --- Generate PDF attachments ---
         byte[] pdfBytes;
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             PdfWriter writer = new PdfWriter(baos);
@@ -145,11 +128,10 @@ public class BookingService {
             pdfBytes = new byte[0];
         }
 
-        // --- Asynchronous email sending ---
         final byte[] finalPdfBytes = pdfBytes;
         new Thread(() -> EmailSender.sendEmailWithAttachment(
                 customer.getEmail(),
-                "Booking Confirmation - Luxury Car Rental",
+                "Booking Created - Luxury Car Rental",
                 htmlBody,
                 finalPdfBytes
         )).start();
@@ -210,6 +192,44 @@ public class BookingService {
     }
 
     // ---------------- Booking Operations ----------------
+
+    public Booking payForBooking(UUID bookingId) {
+        Booking booking = state.getBookings().get(bookingId);
+        if (booking == null)
+            throw new WebApplicationException("Booking not found", 404);
+
+        if (booking.getPaymentStatus() != PaymentStatus.PENDING)
+            throw new WebApplicationException("Booking is not pending payment", 400);
+
+        Customer customer = booking.getCustomer();
+        double amount = booking.getDepositAmount() + booking.getTotalCost();
+
+        // Simulated user account balance check
+        if (customer.getBalance() < amount) {
+            booking.setPaymentStatus(PaymentStatus.FAILED);
+            throw new WebApplicationException("Insufficient balance", 400);
+        }
+
+        // Simulated deduction
+        customer.setBalance(customer.getBalance() - amount);
+        booking.setPaymentStatus(PaymentStatus.SUCCESSFUL);
+        booking.setBookingStatus(BookingStatus.CONFIRMED);
+
+        // Send a payment success email
+        new Thread(() -> EmailSender.sendEmail(
+                customer.getEmail(),
+                "Booking Confirmed - Luxury Car Rental",
+                "Dear " + customer.getFirstName() + " " + customer.getLastName() + ",\n\n" +
+                        "Your booking (ID: " + booking.getBookingId() + ") has been successfully confirmed.\n" +
+                        "From: " + booking.getStartDate() + " To: " + booking.getEndDate() + "\n" +
+                        "Deposit: " + booking.getDepositAmount() + "\n" +
+                        "Total Cost: " + booking.getTotalCost() + "\n\n" +
+                        "Thank you for choosing Luxury Car Rental!"
+        )).start();
+
+        return booking;
+    }
+
     public void completeBooking(UUID bookingId) {
         Booking booking = state.getBookings().get(bookingId);
         if (booking == null) throw new WebApplicationException("Booking not found", 404);
@@ -226,7 +246,74 @@ public class BookingService {
         }
 
         booking.setBookingStatus(BookingStatus.COMPLETED);
-        booking.setPaymentStatus(PaymentStatus.SUCCESSFUL);
+
+        // Send a booking completion email notification
+        String emailBody = String.format(
+                "Booking Completed\n\n" +
+                        "Dear %s %s,\n\n" +
+                        "We are pleased to inform you that your booking %s has been completed successfully.\n\n" +
+                        "We hope you enjoyed your experience. If you have any feedback, please feel free to contact us.\n\n" +
+                        "Thank you for choosing Luxury Car Rental!\n" +
+                        "Luxury Car Rental Team",
+                booking.getCustomer().getFirstName(),
+                booking.getCustomer().getLastName(),
+                booking.getBookingId()
+        );
+
+        // Send email asynchronously
+        new Thread(() -> EmailSender.sendEmail(
+                booking.getCustomer().getEmail(),
+                "Booking Completed - Luxury Car Rental",
+                emailBody
+        )).start();
+    }
+
+    public Booking rejectBooking(UUID bookingId, String reason) {
+        Booking booking = state.getBookings().get(bookingId);
+        if (booking == null)
+            throw new WebApplicationException("Booking not found", 404);
+
+        // Check the current status
+        if (booking.getBookingStatus() == BookingStatus.CANCELLED ||
+                booking.getBookingStatus() == BookingStatus.REJECTED)
+            throw new WebApplicationException("Booking already cancelled or rejected", 400);
+
+        // Update status
+        booking.setBookingStatus(BookingStatus.REJECTED);
+
+        // If it has been paid, it will be automatically refunded.
+        if (booking.getPaymentStatus() == PaymentStatus.SUCCESSFUL) {
+            Customer customer = booking.getCustomer();
+            double refund = booking.getDepositAmount() + booking.getTotalCost();
+            customer.setBalance(customer.getBalance() + refund);
+            booking.setPaymentStatus(PaymentStatus.REFUNDED);
+        }
+
+        // Send an email notification
+        String emailBody = String.format(
+                "Booking Rejected\n\n" +
+                        "Dear %s %s,\n\n" +
+                        "We regret to inform you that your booking %s has been rejected.\n\n" +
+                        "%s" +
+                        "If you have any questions or would like to make a new reservation, please contact our support team.\n\n" +
+                        "Thank you for your understanding,\n" +
+                        "Luxury Car Rental Team",
+                booking.getCustomer().getFirstName(),
+                booking.getCustomer().getLastName(),
+                booking.getBookingId(),
+                (reason != null && !reason.isBlank())
+                        ? "Reason: " + reason + "\n\n"
+                        : ""
+        );
+
+        // Send emails asynchronously
+        new Thread(() -> EmailSender.sendEmail(
+                booking.getCustomer().getEmail(),
+                "Booking Rejected - Luxury Car Rental",
+                emailBody
+        )).start();
+
+        return booking;
     }
 
     public void cancelBooking(UUID bookingId) {
@@ -241,5 +328,69 @@ public class BookingService {
 
         booking.setBookingStatus(BookingStatus.CANCELLED);
         booking.setPaymentStatus(PaymentStatus.REFUNDED);
+
+        // Send a cancellation email notification
+        String emailBody = String.format(
+                "Booking Cancelled\n\n" +
+                        "Dear %s %s,\n\n" +
+                        "Your booking %s has been cancelled successfully.\n\n" +
+                        "If you have any questions or wish to make a new reservation, please contact our support team.\n\n" +
+                        "Thank you,\n" +
+                        "Luxury Car Rental Team",
+                booking.getCustomer().getFirstName(),
+                booking.getCustomer().getLastName(),
+                booking.getBookingId()
+        );
+
+        // Send email asynchronously
+        new Thread(() -> EmailSender.sendEmail(
+                booking.getCustomer().getEmail(),
+                "Booking Cancelled - Luxury Car Rental",
+                emailBody
+        )).start();
     }
+
+    public void confirmBooking(UUID bookingId) {
+        Booking booking = state.getBookings().get(bookingId);
+        if (booking == null) {
+            throw new WebApplicationException("Booking not found", 404);
+        }
+
+        // Check the current status
+        if (booking.getBookingStatus() != BookingStatus.PENDING) {
+            throw new WebApplicationException("Only pending bookings can be confirmed", 400);
+        }
+
+        Car car = booking.getCar();
+        Customer customer = booking.getCustomer();
+
+        // Check whether the vehicle is available
+        if (car.getStatus() != CarStatus.AVAILABLE) {
+            throw new WebApplicationException("Car is not available", 400);
+        }
+
+        // Deduct deposit (error if balance is insufficient)
+        double deposit = booking.getDepositAmount();
+        if (customer.getBalance() < deposit) {
+            throw new WebApplicationException("Insufficient balance for deposit", 400);
+        }
+        customer.setBalance(customer.getBalance() - deposit);
+
+        // Update status
+        car.setStatus(CarStatus.UNAVAILABLE);
+        booking.setBookingStatus(BookingStatus.CONFIRMED);
+        booking.setPaymentStatus(PaymentStatus.SUCCESSFUL);
+
+        String subject = "Booking Confirmed  - Luxury Car Rental";
+        String body = String.format(
+                "Dear %s,\n\nYour booking for %s from %s to %s has been confirmed.\nTotal deposit: %.2f\n\nThank you for choosing us!",
+                customer.getFirstName(),
+                car.getCarType().getBrand() + " " + car.getCarType().getModel(),
+                booking.getStartDate(),
+                booking.getEndDate(),
+                deposit
+        );
+        EmailSender.sendEmail(customer.getEmail(), subject, body);
+    }
+
 }
