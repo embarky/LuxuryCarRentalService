@@ -55,24 +55,23 @@ public class AdminResource {
     // Login
     @POST
     @Path("/login")
-    public Response login(Map<String, String> loginRequest) {
-        String username = loginRequest.get("username");
+    public Response loginAdmin(Map<String, String> loginRequest) {
+        String email = loginRequest.get("email");
         String password = loginRequest.get("password");
 
-        if (username == null || password == null) {
+        if (email == null || password == null) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("message", "Username and password are required"))
+                    .entity(Map.of("message", "Email and password are required"))
                     .build();
         }
 
         try {
-            Admin admin = adminService.authenticate(username, password);
-            // Some information can be returned to avoid leaking the password.
+            Admin admin = adminService.authenticate(email, password);
+            // Return admin info without password
             return Response.ok(Map.of(
                     "id", admin.getId(),
-                    "username", admin.getUsername(),
-                    "name", admin.getName(),
-                    "email", admin.getEmail()
+                    "email", admin.getEmail(),
+                    "role", "admin"
             )).build();
         } catch (WebApplicationException e) {
             return Response.status(e.getResponse().getStatus())
@@ -85,9 +84,14 @@ public class AdminResource {
      * Request a password reset code to be sent to admin's email
      */
     @POST
-    @Path("/{id}/password-reset-code")
-    public Response sendPasswordResetCode(@PathParam("id") UUID id) {
-        adminService.sendAdminPasswordResetCode(id);
+    @Path("/password-reset-code")
+    public Response sendPasswordResetCodeByEmail(Map<String, String> body) {
+        String email = body.get("email");
+        if (email == null) {
+            throw new WebApplicationException("Email is required", 400);
+        }
+
+        adminService.sendAdminPasswordResetCodeByEmail(email);
         return Response.ok(Map.of("message", "Verification code sent to admin email")).build();
     }
 
@@ -95,16 +99,17 @@ public class AdminResource {
      * Reset admin password using verification code
      */
     @PUT
-    @Path("/{id}/reset-password")
-    public Response resetPasswordWithCode(@PathParam("id") UUID id, Map<String, String> body) {
+    @Path("/reset-password")
+    public Response resetPasswordWithCodeByEmail(Map<String, String> body) {
+        String email = body.get("email");
         String code = body.get("code");
         String newPassword = body.get("newPassword");
 
-        if (code == null || newPassword == null) {
+        if (email == null || code == null || newPassword == null) {
             throw new WebApplicationException("Missing required fields", 400);
         }
 
-        adminService.resetAdminPasswordWithCode(id, code, newPassword);
+        adminService.resetAdminPasswordWithCodeByEmail(email, code, newPassword);
         return Response.ok(Map.of("message", "Admin password reset successfully")).build();
     }
 

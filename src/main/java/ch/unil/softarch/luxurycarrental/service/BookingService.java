@@ -182,9 +182,9 @@ public class BookingService {
     public boolean removeBooking(UUID id) {
         Booking booking = state.getBookings().remove(id);
         if (booking != null) {
-            // 恢复车辆状态
+            // Restore vehicle status
             booking.getCar().setStatus(CarStatus.AVAILABLE);
-            // 退还押金
+            // Refund the deposit
             booking.getCustomer().setBalance(booking.getCustomer().getBalance() + booking.getDepositAmount());
             return true;
         }

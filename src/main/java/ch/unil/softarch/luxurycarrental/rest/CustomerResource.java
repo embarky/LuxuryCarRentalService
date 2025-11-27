@@ -82,26 +82,32 @@ public class CustomerResource {
         }
     }
 
-    // --- Request password reset code ---
-    @POST
-    @Path("/{id}/password-reset-code")
-    public Response sendPasswordResetCode(@PathParam("id") UUID id) {
-        customerService.sendPasswordResetCode(id);
-        return Response.ok(Map.of("message", "Verification code sent to your email")).build();
-    }
+        // --- Request password reset code by email ---
+        @POST
+        @Path("/password-reset-code")
+        public Response sendPasswordResetCode(Map<String, String> body) {
+            String email = body.get("email");
+            if (email == null || email.isEmpty()) {
+                throw new WebApplicationException("Email is required", 400);
+            }
 
-    // --- Reset password using verification code ---
-    @PUT
-    @Path("/{id}/reset-password")
-    public Response resetPasswordWithCode(@PathParam("id") UUID id, Map<String, String> body) {
-        String code = body.get("code");
-        String newPassword = body.get("newPassword");
-
-        if (code == null || newPassword == null) {
-            throw new WebApplicationException("Missing required fields", 400);
+            customerService.sendPasswordResetCode(email);
+            return Response.ok(Map.of("message", "Verification code sent to your email")).build();
         }
 
-        customerService.resetPasswordWithCode(id, code, newPassword);
-        return Response.ok(Map.of("message", "Password reset successfully")).build();
+        // --- Reset password using verification code and email ---
+        @PUT
+        @Path("/reset-password")
+        public Response resetPasswordWithCode(Map<String, String> body) {
+            String email = body.get("email");
+            String code = body.get("code");
+            String newPassword = body.get("newPassword");
+
+            if (email == null || code == null || newPassword == null) {
+                throw new WebApplicationException("Missing required fields", 400);
+            }
+
+            customerService.resetPasswordWithCode(email, code, newPassword);
+            return Response.ok(Map.of("message", "Password reset successfully")).build();
+        }
     }
-}

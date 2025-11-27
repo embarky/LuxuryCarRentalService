@@ -37,7 +37,7 @@ public class ApplicationState {
     private Map<UUID, Booking> bookings;
     private Map<UUID, CarType> carTypes;
     // Map: VerificationCode
-    private Map<UUID, VerificationCode> passwordResetCodes;
+    private Map<String, VerificationCode> passwordResetCodes;
 
     // ---------- Initialization ----------
     @PostConstruct
@@ -57,7 +57,7 @@ public class ApplicationState {
     public Map<UUID, Car> getCars() { return cars; }
     public Map<UUID, Booking> getBookings() { return bookings; }
     public Map<UUID, CarType> getCarTypes() { return carTypes; }
-    public Map<UUID, VerificationCode> getPasswordResetCodes() {return passwordResetCodes;}
+    public Map<String, VerificationCode> getPasswordResetCodes() {return passwordResetCodes;}
 
     // ---------- Data population ----------
     private void populateApplicationState() {
@@ -67,13 +67,13 @@ public class ApplicationState {
 
         // Customers (with password)
         Customer customer1 = new Customer(UUID.randomUUID(), "Alice", "Wang", "alice@example.com",
-                "alicePass123", "+41791234567", "CH-123456", LocalDate.of(2028, 6, 30),
+                "alicePass123", "+41791234567", "CH-123456", new Date(2028 - 1900, 6 - 1, 30),
                 29, true, "Rue de Lausanne 45, Lausanne", 5000.0,
                 LocalDateTime.now());
         customers.put(customer1.getId(), customer1);
 
         Customer customer2 = new Customer(UUID.randomUUID(), "Bob", "Li", "bob@example.com",
-                "bobPass456", "+41797654321", "CH-654321", LocalDate.of(2029, 3, 15),
+                "bobPass456", "+41797654321", "CH-654321", new Date(2029 - 1900, 3 - 1, 15),
                 35, true, "Rue de Genève 12, Lausanne", 2500.0,
                 LocalDateTime.now());
         customers.put(customer2.getId(), customer2);
