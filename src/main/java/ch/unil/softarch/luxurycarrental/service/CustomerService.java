@@ -188,4 +188,21 @@ public class CustomerService {
                     "Luxury Car Rental Team";
             EmailSender.sendEmailAsync(email, subject, body);
         }
+
+    /**
+     * Verify customer's identity by ID.
+     * Sets verifiedIdentity = true
+     *
+     * @param id UUID of the customer
+     * @return updated Customer
+     */
+    public Customer verifyCustomer(UUID id) {
+        Customer customer = state.getCustomers().get(id);
+
+        if (customer == null) {
+            return null;
+        }
+        customer.setVerifiedIdentity(true);
+        return customer;
+    }
 }

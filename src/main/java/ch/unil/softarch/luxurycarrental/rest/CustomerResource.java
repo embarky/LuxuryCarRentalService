@@ -82,32 +82,41 @@ public class CustomerResource {
         }
     }
 
-        // --- Request password reset code by email ---
-        @POST
-        @Path("/password-reset-code")
-        public Response sendPasswordResetCode(Map<String, String> body) {
-            String email = body.get("email");
-            if (email == null || email.isEmpty()) {
-                throw new WebApplicationException("Email is required", 400);
-            }
-
-            customerService.sendPasswordResetCode(email);
-            return Response.ok(Map.of("message", "Verification code sent to your email")).build();
+    // --- Request password reset code by email ---
+    @POST
+    @Path("/password-reset-code")
+    public Response sendPasswordResetCode(Map<String, String> body) {
+        String email = body.get("email");
+        if (email == null || email.isEmpty()) {
+            throw new WebApplicationException("Email is required", 400);
         }
 
-        // --- Reset password using verification code and email ---
-        @PUT
-        @Path("/reset-password")
-        public Response resetPasswordWithCode(Map<String, String> body) {
-            String email = body.get("email");
-            String code = body.get("code");
-            String newPassword = body.get("newPassword");
-
-            if (email == null || code == null || newPassword == null) {
-                throw new WebApplicationException("Missing required fields", 400);
-            }
-
-            customerService.resetPasswordWithCode(email, code, newPassword);
-            return Response.ok(Map.of("message", "Password reset successfully")).build();
-        }
+        customerService.sendPasswordResetCode(email);
+        return Response.ok(Map.of("message", "Verification code sent to your email")).build();
     }
+
+    // --- Reset password using verification code and email ---
+    @PUT
+    @Path("/reset-password")
+    public Response resetPasswordWithCode(Map<String, String> body) {
+        String email = body.get("email");
+        String code = body.get("code");
+        String newPassword = body.get("newPassword");
+
+        if (email == null || code == null || newPassword == null) {
+            throw new WebApplicationException("Missing required fields", 400);
+        }
+
+        customerService.resetPasswordWithCode(email, code, newPassword);
+        return Response.ok(Map.of("message", "Password reset successfully")).build();
+    }
+
+    /**
+     * Verify customer identity
+     */
+    @PUT
+    @Path("/verify/{id}")
+    public Customer verifyCustomer(@PathParam("id") UUID id) {
+        return customerService.verifyCustomer(id);
+    }
+}
