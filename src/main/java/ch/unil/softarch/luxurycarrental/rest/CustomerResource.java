@@ -116,7 +116,7 @@ public class CustomerResource {
      */
     @PUT
     @Path("/verify/{id}")
-    public Customer verifyCustomer(@PathParam("id") UUID id) {
+    public boolean verifyCustomer(@PathParam("id") UUID id) {
         return customerService.verifyCustomer(id);
     }
 }

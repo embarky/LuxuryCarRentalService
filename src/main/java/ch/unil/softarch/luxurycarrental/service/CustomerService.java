@@ -196,13 +196,13 @@ public class CustomerService {
      * @param id UUID of the customer
      * @return updated Customer
      */
-    public Customer verifyCustomer(UUID id) {
+    public boolean verifyCustomer(UUID id) {
         Customer customer = state.getCustomers().get(id);
 
         if (customer == null) {
-            return null;
+            return false;
         }
         customer.setVerifiedIdentity(true);
-        return customer;
+        return true;
     }
 }
