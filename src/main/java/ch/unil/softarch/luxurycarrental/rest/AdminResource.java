@@ -61,21 +61,16 @@ public class AdminResource {
 
         if (email == null || password == null) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("message", "Email and password are required"))
+                    .entity("Email and password are required")
                     .build();
         }
 
         try {
             Admin admin = adminService.authenticate(email, password);
-            // Return admin info without password
-            return Response.ok(Map.of(
-                    "id", admin.getId(),
-                    "email", admin.getEmail(),
-                    "role", "admin"
-            )).build();
+            return Response.ok(admin).build();
         } catch (WebApplicationException e) {
             return Response.status(e.getResponse().getStatus())
-                    .entity(Map.of("message", e.getMessage()))
+                    .entity(e.getMessage())
                     .build();
         }
     }

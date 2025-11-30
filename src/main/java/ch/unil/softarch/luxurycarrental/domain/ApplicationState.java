@@ -74,7 +74,7 @@ public class ApplicationState {
 
         Customer customer2 = new Customer(UUID.randomUUID(), "Bob", "Li", "bob@example.com",
                 "bobPass456", "+41797654321", "CH-654321", new Date(2029 - 1900, 3 - 1, 15),
-                35, true, "Rue de Genève 12, Lausanne", 2500.0,
+                35, false, "Rue de Genève 12, Lausanne", 2500.0,
                 LocalDateTime.now());
         customers.put(customer2.getId(), customer2);
 
@@ -91,12 +91,12 @@ public class ApplicationState {
 
         // Cars (dependent on CarType)
         Car car1 = new Car(UUID.randomUUID(), "VD12345", sedan, 100.0, 300.0, CarStatus.AVAILABLE,
-                "https://example.com/camry.jpg", LocalDate.now(), LocalDate.now(), "VIN123456",
+                "https://di-enrollment-api.s3.amazonaws.com/toyota/models/2024/camry/Trims/le.jpg", LocalDate.now(), LocalDate.now(), "VIN123456",
                 "White", LocalDate.now().plusYears(1));
         cars.put(car1.getId(), car1);
 
         Car car2 = new Car(UUID.randomUUID(), "VD67890", suv, 200.0, 500.0, CarStatus.AVAILABLE,
-                "https://example.com/x5.jpg", LocalDate.now(), LocalDate.now(), "VIN654321",
+                "https://mediapool.bmwgroup.com/cache/P9/202106/P90428329/P90428329-bmw-x5-black-vermilion-edition-07-2021-600px.jpg", LocalDate.now(), LocalDate.now(), "VIN654321",
                 "Black", LocalDate.now().plusYears(1));
         cars.put(car2.getId(), car2);
 
