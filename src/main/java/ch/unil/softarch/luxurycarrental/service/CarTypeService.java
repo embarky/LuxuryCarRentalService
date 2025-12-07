@@ -1,43 +1,53 @@
 package ch.unil.softarch.luxurycarrental.service;
 
-import ch.unil.softarch.luxurycarrental.domain.ApplicationState;
 import ch.unil.softarch.luxurycarrental.domain.entities.CarType;
+import ch.unil.softarch.luxurycarrental.repository.CarRepository;
+import ch.unil.softarch.luxurycarrental.repository.CarTypeRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @ApplicationScoped
 public class CarTypeService {
 
     @Inject
-    private ApplicationState state;
+    private CarTypeRepository carTypeRepo; // JDBC repository for CarType
 
-    // Create
+    @Inject
+    private CarRepository carRepo; // JDBC repository for Car (for usage check)
+
+    // ---------- CREATE ----------
     public CarType addCarType(CarType carType) {
-        if (carType.getId() == null) carType.setId(UUID.randomUUID());
-        state.getCarTypes().put(carType.getId(), carType);
-        return carType;
+        if (carType.getId() == null) {
+            carType.setId(UUID.randomUUID());
+        }
+
+        // Optional: check for duplicate brand + model
+        Optional<CarType> existing = carTypeRepo.findByBrandAndModel(carType.getBrand(), carType.getModel());
+        if (existing.isPresent()) {
+            throw new WebApplicationException("CarType with this brand and model already exists", 400);
+        }
+
+        return carTypeRepo.save(carType);
     }
 
-    // Read
+    // ---------- READ ----------
     public CarType getCarType(UUID id) {
-        CarType carType = state.getCarTypes().get(id);
-        if (carType == null) throw new WebApplicationException("CarType not found", 404);
-        return carType;
+        return carTypeRepo.findById(id)
+                .orElseThrow(() -> new WebApplicationException("CarType not found", 404));
     }
 
     public List<CarType> getAllCarTypes() {
-        return new ArrayList<>(state.getCarTypes().values());
+        return carTypeRepo.findAll();
     }
 
-    // Update
+    // ---------- UPDATE ----------
     public CarType updateCarType(UUID id, CarType update) {
-        CarType existing = state.getCarTypes().get(id);
-        if (existing == null) throw new WebApplicationException("CarType not found", 404);
+        CarType existing = getCarType(id);
 
         if (update.getCategory() != null) existing.setCategory(update.getCategory());
         if (update.getBrand() != null) existing.setBrand(update.getBrand());
@@ -53,27 +63,28 @@ public class CarTypeService {
         if (update.getDescription() != null) existing.setDescription(update.getDescription());
         if (update.getFeatures() != null) existing.setFeatures(update.getFeatures());
 
-        return existing;
+        return carTypeRepo.save(existing);
     }
 
-    // Delete a CarType by its ID
+    // ---------- DELETE ----------
     public boolean removeCarType(UUID id) {
-        CarType existing = state.getCarTypes().get(id);
-        if (existing == null) {
-            throw new WebApplicationException("CarType not found", 404);
-        }
+        CarType existing = getCarType(id);
 
-        // --- Check if any Car still uses this CarType ---
-        boolean inUseByCars = state.getCars().values().stream()
+        // Check if there is a Car using this CarType
+        boolean inUseByCars = carRepo.findAll().stream()
                 .anyMatch(car -> car.getCarType() != null && id.equals(car.getCarType().getId()));
 
         if (inUseByCars) {
-            // Prevent deletion if there are cars using this type
             throw new WebApplicationException(
                     "Cannot delete CarType: there are cars still using this type", 400);
         }
 
-        // --- Safe to delete if no cars are linked to this CarType ---
-        return state.getCarTypes().remove(id) != null;
+        return carTypeRepo.delete(id);
+    }
+
+    // ---------- CUSTOM QUERY ----------
+    public CarType getByBrandAndModel(String brand, String model) {
+        return carTypeRepo.findByBrandAndModel(brand, model)
+                .orElseThrow(() -> new WebApplicationException("CarType not found for brand and model", 404));
     }
 }

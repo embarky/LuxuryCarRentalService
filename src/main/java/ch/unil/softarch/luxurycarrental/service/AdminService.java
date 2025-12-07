@@ -1,7 +1,7 @@
 package ch.unil.softarch.luxurycarrental.service;
 
-import ch.unil.softarch.luxurycarrental.domain.ApplicationState;
 import ch.unil.softarch.luxurycarrental.domain.entities.Admin;
+import ch.unil.softarch.luxurycarrental.repository.AdminRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
@@ -14,22 +14,24 @@ import java.util.*;
 public class AdminService {
 
     @Inject
-    private ApplicationState state;
+    private AdminRepository adminRepo; // Inject the Admin repository for DB operations
 
-    // Create
-    // AdminService.java
+    // Temporary in-memory storage for password reset codes
+    private final Map<String, VerificationCode> passwordResetCodes = new HashMap<>();
+
+    // ---------- CREATE ----------
+    /**
+     * Add a new administrator.
+     * Checks for unique username and email before saving to database.
+     */
     public Admin addAdmin(Admin admin) {
-        // Check for duplicate username
-        boolean usernameExists = state.getAdmins().values().stream()
-                .anyMatch(a -> a.getUsername().equals(admin.getUsername()));
-        if (usernameExists) {
+        // Check if username already exists in the database
+        if (adminRepo.findByUsername(admin.getUsername()).isPresent()) {
             throw new WebApplicationException("Username already exists", 400);
         }
 
-        // Check for duplicate email
-        boolean emailExists = state.getAdmins().values().stream()
-                .anyMatch(a -> a.getEmail().equals(admin.getEmail()));
-        if (emailExists) {
+        // Check if email already exists in the database
+        if (adminRepo.findByEmail(admin.getEmail()).isPresent()) {
             throw new WebApplicationException("Email already exists", 400);
         }
 
@@ -38,137 +40,175 @@ public class AdminService {
         if (admin.getCreatedAt() == null) admin.setCreatedAt(LocalDateTime.now());
         if (admin.getUpdatedAt() == null) admin.setUpdatedAt(LocalDateTime.now());
 
-        // Save admin
-        state.getAdmins().put(admin.getId(), admin);
+        // Save admin to database
+        Admin saved = adminRepo.save(admin);
 
-        // --- Send welcome email ---
-        String to = admin.getEmail();
+        // Send welcome email
         String subject = "Welcome to Luxury Car Rental Admin Panel";
-        String body = "Hi " + admin.getName() + ",\n\n" +
-                "Your administrator account has been successfully created.\n" +
-                "Username: " + admin.getUsername() + "\n" +
-                "Please keep your password secure.\n\n" +
-                "Best regards,\nLuxury Car Rental Team";
+        String body = "Hi " + saved.getName() + ",\nYour account has been created.\nUsername: " + saved.getUsername();
+        EmailSender.sendEmailAsync(saved.getEmail(), subject, body);
 
-        // Call the mail sending tool
-        EmailSender.sendEmailAsync(to, subject, body);
-
-        return admin;
+        return saved;
     }
 
-    // Read
+    // ---------- READ ----------
+    /**
+     * Get administrator by ID.
+     * @param id Admin UUID
+     * @return Admin object
+     */
     public Admin getAdmin(UUID id) {
-        Admin admin = state.getAdmins().get(id);
-        if (admin == null) throw new WebApplicationException("Admin not found", 404);
-        return admin;
-    }
-
-    public List<Admin> getAllAdmins() {
-        return new ArrayList<>(state.getAdmins().values());
-    }
-
-    // Update
-    public Admin updateAdmin(UUID id, Admin update) {
-        Admin existing = state.getAdmins().get(id);
-        if (existing == null) throw new WebApplicationException("Admin not found", 404);
-
-        if (update.getName() != null) existing.setName(update.getName());
-        if (update.getUsername() != null) existing.setUsername(update.getUsername());
-        if (update.getEmail() != null) existing.setEmail(update.getEmail());
-        if (update.getPassword() != null && !update.getPassword().isBlank()) {
-            existing.setPassword(update.getPassword()); // 可加加密逻辑
-        }
-
-        existing.setUpdatedAt(LocalDateTime.now());
-        return existing;
-    }
-
-    // Delete
-    public boolean removeAdmin(UUID id) {
-        return state.getAdmins().remove(id) != null;
-    }
-
-    // Login verification
-    public Admin authenticate(String email, String password) {
-        return state.getAdmins().values().stream()
-                .filter(a -> a.getEmail().equals(email)
-                        && a.getPassword().equals(password))
-                .findFirst()
-                .orElseThrow(() -> new WebApplicationException("Invalid email or password", 401));
-    }
-
-    // Get the administrator according to the ID
-    public Admin getAdminById(UUID id) {
-        Admin admin = state.getAdmins().get(id);
-        if (admin == null) throw new WebApplicationException("Admin not found", 404);
-        return admin;
+        return adminRepo.findById(id).orElseThrow(() -> new WebApplicationException("Admin not found", 404));
     }
 
     /**
+     * Get all administrators.
+     * @return List of Admin objects
+     */
+    public List<Admin> getAllAdmins() {
+        return adminRepo.findAll();
+    }
+
+    // ---------- UPDATE ----------
+    /**
+     * Update administrator details.
+     * Only non-null fields will be updated.
+     */
+    public Admin updateAdmin(UUID id, Admin update) {
+        // Retrieve existing admin or throw 404 if not found
+        Admin existing = getAdmin(id);
+
+        // ---------- USERNAME UNIQUENESS CHECK ----------
+        // Only check uniqueness if the username is being changed
+        if (update.getUsername() != null && !update.getUsername().equals(existing.getUsername())) {
+            adminRepo.findByUsername(update.getUsername()).ifPresent(a -> {
+                // If another admin with this username exists, throw a 400 error
+                if (!a.getId().equals(id)) {
+                    throw new WebApplicationException("Username already exists", 400);
+                }
+            });
+            existing.setUsername(update.getUsername());
+        }
+
+        // ---------- EMAIL UNIQUENESS CHECK ----------
+        // Only check uniqueness if the email is being changed
+        if (update.getEmail() != null && !update.getEmail().equals(existing.getEmail())) {
+            adminRepo.findByEmail(update.getEmail()).ifPresent(a -> {
+                // If another admin with this email exists, throw a 400 error
+                if (!a.getId().equals(id)) {
+                    throw new WebApplicationException("Email already exists", 400);
+                }
+            });
+            existing.setEmail(update.getEmail());
+        }
+
+        // ---------- PATCH UPDATE FOR OTHER FIELDS ----------
+        // Update name if provided
+        if (update.getName() != null) {
+            existing.setName(update.getName());
+        }
+
+        // Update password only if provided and not blank
+        if (update.getPassword() != null && !update.getPassword().isBlank()) {
+            // TODO: Add password encryption here
+            existing.setPassword(update.getPassword());
+        }
+
+        // Always update the timestamp
+        existing.setUpdatedAt(LocalDateTime.now());
+
+        // Save updated admin to the database
+        return adminRepo.save(existing);
+    }
+
+    // ---------- DELETE ----------
+    /**
+     * Remove administrator by ID.
+     * @param id Admin UUID
+     * @return true if removed successfully
+     */
+    public boolean removeAdmin(UUID id) {
+        return adminRepo.delete(id);
+    }
+
+    // ---------- AUTHENTICATION ----------
+    /**
+     * Authenticate administrator by email and password.
+     * @param email Admin email
+     * @param password Admin password
+     * @return Admin object if credentials are valid
+     */
+    public Admin authenticate(String email, String password) {
+        Admin admin = adminRepo.findByEmail(email)
+                .orElseThrow(() -> new WebApplicationException("Invalid email or password", 401));
+        if (!admin.getPassword().equals(password)) {
+            throw new WebApplicationException("Invalid email or password", 401);
+        }
+        return admin;
+    }
+
+    // ---------- PASSWORD RESET ----------
+    /**
      * Send password reset code to admin's email.
+     * @param email Admin email
      */
     public void sendAdminPasswordResetCodeByEmail(String email) {
-        Admin admin = state.getAdmins().values().stream()
-                .filter(a -> a.getEmail().equals(email))
-                .findFirst()
-                .orElseThrow(() -> new WebApplicationException("Admin account not found", 404));
+        Admin admin = adminRepo.findByEmail(email)
+                .orElseThrow(() -> new WebApplicationException("Admin not found", 404));
 
-        // Generate random 6-digit code
+        // Generate 6-digit random code
         String code = String.format("%06d", new Random().nextInt(999999));
-
-        // Save code to application state
-        state.getPasswordResetCodes().put(admin.getEmail(),
-                new ApplicationState.VerificationCode(code, LocalDateTime.now()));
+        passwordResetCodes.put(admin.getEmail(), new VerificationCode(code, LocalDateTime.now()));
 
         // Prepare email
         String subject = "Admin Password Reset Code";
-        String body = "Dear " + admin.getName() + ",\n\n" +
-                "Your password reset code is: " + code + "\n" +
-                "This code will expire in 5 minutes and can only be used once.\n\n" +
-                "Luxury Car Rental System";
-
-        // Send email asynchronously
+        String body = "Your code is: " + code + " (expires in 5 minutes)";
         EmailSender.sendEmailAsync(admin.getEmail(), subject, body);
     }
 
     /**
-     * Reset admin password using verification code.
+     * Reset administrator password using verification code.
+     * @param email Admin email
+     * @param code Verification code
+     * @param newPassword New password
      */
     public void resetAdminPasswordWithCodeByEmail(String email, String code, String newPassword) {
-        Admin admin = state.getAdmins().values().stream()
-                .filter(a -> a.getEmail().equals(email))
-                .findFirst()
-                .orElseThrow(() -> new WebApplicationException("Admin account not found", 404));
+        Admin admin = adminRepo.findByEmail(email)
+                .orElseThrow(() -> new WebApplicationException("Admin not found", 404));
 
-        ApplicationState.VerificationCode stored = state.getPasswordResetCodes().get(admin.getEmail());
-        if (stored == null) {
-            throw new WebApplicationException("No verification code found", 400);
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        if (Duration.between(stored.getCreatedAt(), now).toMinutes() >= 5) {
-            state.getPasswordResetCodes().remove(admin.getEmail());
-            throw new WebApplicationException("Verification code has expired", 400);
+        VerificationCode stored = passwordResetCodes.get(email);
+        if (stored == null || Duration.between(stored.getCreatedAt(), LocalDateTime.now()).toMinutes() >= 5) {
+            passwordResetCodes.remove(email);
+            throw new WebApplicationException("Verification code expired or not found", 400);
         }
 
         if (!stored.getCode().equals(code)) {
             throw new WebApplicationException("Invalid verification code", 400);
         }
 
-        // Update password
+        // Update password in database
         admin.setPassword(newPassword);
+        admin.setUpdatedAt(LocalDateTime.now());
+        adminRepo.save(admin);
 
-        // Invalidate code after use
-        state.getPasswordResetCodes().remove(admin.getEmail());
+        // Remove used code
+        passwordResetCodes.remove(email);
 
         // Send confirmation email
-        String subject = "Administrator Password Changed Successfully";
-        String body = "Dear " + admin.getName() + ",\n\n" +
-                "Your administrator password has been successfully changed.\n\n" +
-                "Luxury Car Rental System";
-
-        EmailSender.sendEmailAsync(admin.getEmail(), subject, body);
+        EmailSender.sendEmailAsync(email, "Password changed", "Your password has been updated successfully.");
     }
 
+    // Inner class for temporary verification code
+    private static class VerificationCode {
+        private final String code;
+        private final LocalDateTime createdAt;
 
+        public VerificationCode(String code, LocalDateTime createdAt) {
+            this.code = code;
+            this.createdAt = createdAt;
+        }
+
+        public String getCode() { return code; }
+        public LocalDateTime getCreatedAt() { return createdAt; }
+    }
 }
