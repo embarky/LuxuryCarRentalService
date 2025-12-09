@@ -1,22 +1,22 @@
 # -------------------------------------------------------------------------
-# 1. 清理旧资源
+# 1. Clear old resources
 # -------------------------------------------------------------------------
 delete-jdbc-resource jdbc/LuxuryCarRental
 delete-jdbc-connection-pool LuxuryCarRentalPool
 
 # -------------------------------------------------------------------------
-# 2. 最终修正版创建连接池 (必须是完整、安全的一行!)
+# 2. Final revised version creates a connection pool (must be a complete, secure line!)
 # -------------------------------------------------------------------------
-# 彻底移除所有换行符和空格陷阱
+# Completely remove all newline and space traps
 create-jdbc-connection-pool --datasourceclassname com.mysql.cj.jdbc.MysqlDataSource --restype javax.sql.DataSource --property user=${ENV=DB_USER}:password=${ENV=DB_PASSWORD}:DatabaseName=${ENV=DB_NAME}:ServerName=${ENV=DB_HOST}:PortNumber=${ENV=DB_PORT}:useSSL=false:allowPublicKeyRetrieval=true:validation-required=true:validation-method=auto-commit LuxuryCarRentalPool
 
 # -------------------------------------------------------------------------
-# 3. 创建资源
+# 3. Create resources
 # -------------------------------------------------------------------------
 create-jdbc-resource --connectionpoolid LuxuryCarRentalPool jdbc/LuxuryCarRental
 
 # -------------------------------------------------------------------------
-# 4. 部署
+# 4. Deployment
 # -------------------------------------------------------------------------
 deploy --force=true --contextroot luxurycarrental /opt/payara/deployments/LuxuryCarRentalService-1.0-SNAPSHOT.war
-deploy --force=true --contextroot / /opt/payara/deployments/LuxuryCarRentalWebapp-1.0-SNAPSHOT.war
+deploy --force=true --contextroot /LuxuryCarRental /opt/payara/deployments/LuxuryCarRental.war
