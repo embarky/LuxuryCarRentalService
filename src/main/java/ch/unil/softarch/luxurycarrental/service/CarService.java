@@ -1,64 +1,104 @@
 package ch.unil.softarch.luxurycarrental.service;
 
-import ch.unil.softarch.luxurycarrental.domain.ApplicationState;
 import ch.unil.softarch.luxurycarrental.domain.entities.Car;
 import ch.unil.softarch.luxurycarrental.domain.entities.CarType;
 import ch.unil.softarch.luxurycarrental.domain.enums.BookingStatus;
+import ch.unil.softarch.luxurycarrental.domain.enums.CarStatus;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.TypedQuery;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
+/**
+ * Service class for managing Cars.
+ * <p>
+ * Handles CRUD operations and complex search queries using JPA.
+ * Ensures data consistency by validating CarType relationships and Booking dependencies.
+ * </p>
+ */
 @ApplicationScoped
 public class CarService {
 
-    @Inject
-    private ApplicationState state;
+    @PersistenceContext(unitName = "LuxuryCarRentalPU")
+    private EntityManager em;
 
+    // -------------------------------------------------------------------------
     // Read
+    // -------------------------------------------------------------------------
+
+    /**
+     * Retrieves a car by its unique ID.
+     */
     public Car getCar(UUID id) {
-        Car car = state.getCars().get(id);
-        if (car == null) throw new WebApplicationException("Car not found", 404); // ✅ 一致的异常处理
+        Car car = em.find(Car.class, id);
+        if (car == null) throw new WebApplicationException("Car not found", 404);
         return car;
     }
 
+    /**
+     * Retrieves all cars in the database.
+     */
     public List<Car> getAllCars() {
-        return new ArrayList<>(state.getCars().values());
+        return em.createQuery("SELECT c FROM Car c", Car.class).getResultList();
     }
 
+    // -------------------------------------------------------------------------
     // Create
+    // -------------------------------------------------------------------------
+
+    /**
+     * Adds a new car to the fleet.
+     * Validates that the associated CarType exists.
+     */
+    @Transactional
     public Car addCar(Car car) {
+        // Validate CarType input
         if (car.getCarType() == null || car.getCarType().getId() == null) {
             throw new WebApplicationException("CarType must be provided", 400);
         }
-        // Check that the CarType exists
-        if (!state.getCarTypes().containsKey(car.getCarType().getId())) {
+
+        // Check if CarType exists in the database
+        CarType type = em.find(CarType.class, car.getCarType().getId());
+        if (type == null) {
             throw new WebApplicationException("CarType does not exist", 400);
         }
 
-        if (car.getId() == null) car.setId(UUID.randomUUID());
-        state.getCars().put(car.getId(), car);
+        // Link the managed CarType entity to the Car
+        car.setCarType(type);
+
+        // ID and Timestamps are handled by @PrePersist in the entity
+        em.persist(car);
         return car;
     }
 
+    // -------------------------------------------------------------------------
     // Update
+    // -------------------------------------------------------------------------
+
+    /**
+     * Updates an existing car's details.
+     */
+    @Transactional
     public Car updateCar(UUID id, Car update) {
-        Car existing = state.getCars().get(id);
+        Car existing = em.find(Car.class, id);
         if (existing == null) throw new WebApplicationException("Car not found", 404);
 
-        // If updating CarType, check it exists
-        if (update.getCarType() != null) {
-            if (update.getCarType().getId() == null ||
-                    !state.getCarTypes().containsKey(update.getCarType().getId())) {
+        // Handle CarType update
+        if (update.getCarType() != null && update.getCarType().getId() != null) {
+            CarType newType = em.find(CarType.class, update.getCarType().getId());
+            if (newType == null) {
                 throw new WebApplicationException("CarType does not exist", 400);
             }
-            existing.setCarType(update.getCarType());
+            existing.setCarType(newType);
         }
 
+        // Update basic fields
         if (update.getLicensePlate() != null) existing.setLicensePlate(update.getLicensePlate());
         if (update.getDailyRentalPrice() > 0) existing.setDailyRentalPrice(update.getDailyRentalPrice());
         if (update.getDepositAmount() > 0) existing.setDepositAmount(update.getDepositAmount());
@@ -70,85 +110,133 @@ public class CarService {
         if (update.getColor() != null) existing.setColor(update.getColor());
         if (update.getInsuranceExpiryDate() != null) existing.setInsuranceExpiryDate(update.getInsuranceExpiryDate());
 
+        // Changes are automatically flushed to DB at the end of transaction
         return existing;
     }
 
-    // Delete a Car by its ID
+    // -------------------------------------------------------------------------
+    // Delete
+    // -------------------------------------------------------------------------
+
+    /**
+     * Removes a car from the fleet.
+     * Prevents deletion if the car has active bookings.
+     */
+    @Transactional
     public boolean removeCar(UUID id) {
-        Car existing = state.getCars().get(id);
+        Car existing = em.find(Car.class, id);
         if (existing == null) {
             throw new WebApplicationException("Car not found", 404);
         }
 
-        // --- Check if there are active bookings related to this car ---
-        boolean hasActiveBookings = state.getBookings().values().stream().anyMatch(booking ->
-                booking.getCar() != null &&
-                        id.equals(booking.getCar().getId()) &&
-                        booking.getBookingStatus() != null &&
-                        (booking.getBookingStatus() == BookingStatus.PENDING ||
-                                booking.getBookingStatus() == BookingStatus.CONFIRMED ||
-                                booking.getBookingStatus() == BookingStatus.COMPLETED)
-        );
+        // --- Efficient Dependency Check using JP-QL ---
+        // Instead of loading all bookings, we count how many active bookings reference this car.
+        String jpql = "SELECT COUNT(b) FROM Booking b WHERE b.car.id = :carId " +
+                "AND b.bookingStatus IN :statuses";
 
-        if (hasActiveBookings) {
+        Long activeBookingsCount = em.createQuery(jpql, Long.class)
+                .setParameter("carId", id)
+                .setParameter("statuses", List.of(
+                        BookingStatus.PENDING,
+                        BookingStatus.CONFIRMED,
+                        BookingStatus.COMPLETED))
+                .getSingleResult();
+
+        if (activeBookingsCount > 0) {
             throw new WebApplicationException(
                     "Cannot delete Car: there are existing bookings linked to this car", 400);
         }
 
-        // --- Safe to delete if no bookings depend on this car ---
-        return state.getCars().remove(id) != null;
+        // --- Safe to delete ---
+        em.remove(existing);
+        return true;
     }
 
-    public List<Car> searchCars(
-            String q,                // main fuzzy query, matches brand/model/licensePlate/vin/color/carType fields
-            String status,           // optional car status filter (e.g. "AVAILABLE")
-            Double minPrice,         // optional min dailyRentalPrice
-            Double maxPrice,         // optional max dailyRentalPrice
-            UUID carTypeId           // optional exact carType id filter
-    ) {
-        // normalize search term
-        String term = (q == null || q.isBlank()) ? null : q.trim().toLowerCase();
+    // -------------------------------------------------------------------------
+    // Search (Advanced)
+    // -------------------------------------------------------------------------
 
-        return state.getCars().values().stream()
-                .filter(car -> {
-                    // filter by status if provided
-                    if (status != null && !status.isBlank()) {
-                        try {
-                            if (!car.getStatus().name().equalsIgnoreCase(status)) return false;
-                        } catch (Exception ignored) { return false; }
-                    }
+    /**
+     * Searches for cars using dynamic criteria (Fuzzy Search + Filters).
+     *
+     * @param q          Fuzzy search term (matches brand, model, license, color, etc.)
+     * @param status     Filter by CarStatus (e.g., "AVAILABLE")
+     * @param minPrice   Filter by minimum daily price
+     * @param maxPrice   Filter by maximum daily price
+     * @param carTypeId  Filter by specific CarType ID
+     * @return List of cars matching the criteria
+     */
+    public List<Car> searchCars(String q, String status, Double minPrice, Double maxPrice, UUID carTypeId) {
+        // Start building the JP-QL query
+        // We JOIN 'carType' to allow searching/filtering by its fields
+        StringBuilder queryBuilder = new StringBuilder("SELECT c FROM Car c JOIN c.carType ct WHERE 1=1");
 
-                    // filter by price range
-                    if (minPrice != null && car.getDailyRentalPrice() < minPrice) return false;
-                    if (maxPrice != null && car.getDailyRentalPrice() > maxPrice) return false;
+        // List to hold parameters to avoid SQL injection
+        List<Object> params = new ArrayList<>();
+        // Helper list to map parameter names to values (for named parameters) is tricky with dynamic builder
+        // So we will use positional parameters for simplicity ?1, ?2 etc.
+        // OR better: use a distinct logic for setting params after building.
 
-                    // filter by carType id if provided
-                    if (carTypeId != null) {
-                        if (car.getCarType() == null || !carTypeId.equals(car.getCarType().getId())) return false;
-                    }
+        // Let's use a cleaner approach with logic to set params later
+        boolean hasStatus = false;
+        boolean hasMinPrice = false;
+        boolean hasMaxPrice = false;
+        boolean hasCarType = false;
+        boolean hasTerm = false;
 
-                    // if no fuzzy term provided, keep (already passed other filters)
-                    if (term == null) return true;
+        // 1. Status Filter
+        CarStatus statusEnum = null;
+        if (status != null && !status.isBlank()) {
+            try {
+                statusEnum = CarStatus.valueOf(status.toUpperCase());
+                queryBuilder.append(" AND c.status = :status");
+                hasStatus = true;
+            } catch (IllegalArgumentException ignored) {
+                // If invalid status string provided, ignore filter (same as original logic)
+            }
+        }
 
-                    // match against multiple fields (fuzzy: contains, case-insensitive)
-                    if (car.getLicensePlate() != null && car.getLicensePlate().toLowerCase().contains(term)) return true;
-                    if (car.getVin() != null && car.getVin().toLowerCase().contains(term)) return true;
-                    if (car.getColor() != null && car.getColor().toLowerCase().contains(term)) return true;
+        // 2. Price Range Filters
+        if (minPrice != null) {
+            queryBuilder.append(" AND c.dailyRentalPrice >= :minPrice");
+            hasMinPrice = true;
+        }
+        if (maxPrice != null) {
+            queryBuilder.append(" AND c.dailyRentalPrice <= :maxPrice");
+            hasMaxPrice = true;
+        }
 
-                    // match carType fields if present
-                    CarType ct = car.getCarType();
-                    if (ct != null) {
-                        if (ct.getBrand() != null && ct.getBrand().toLowerCase().contains(term)) return true;
-                        if (ct.getModel() != null && ct.getModel().toLowerCase().contains(term)) return true;
-                        if (ct.getCategory() != null && ct.getCategory().toLowerCase().contains(term)) return true;
-                    }
+        // 3. CarType Filter
+        if (carTypeId != null) {
+            queryBuilder.append(" AND ct.id = :carTypeId");
+            hasCarType = true;
+        }
 
-                    // match numeric fields stringified (e.g., power, seats) — optional convenience
-                    if (String.valueOf(car.getDailyRentalPrice()).contains(term)) return true;
-                    if (car.getId() != null && car.getId().toString().toLowerCase().contains(term)) return true;
+        // 4. Fuzzy Search (Term)
+        String term = null;
+        if (q != null && !q.isBlank()) {
+            term = "%" + q.trim().toLowerCase() + "%"; // Prepare for LIKE '%term%'
+            queryBuilder.append(" AND (")
+                    .append("LOWER(c.licensePlate) LIKE :term OR ")
+                    .append("LOWER(c.vin) LIKE :term OR ")
+                    .append("LOWER(c.color) LIKE :term OR ")
+                    .append("LOWER(ct.brand) LIKE :term OR ")
+                    .append("LOWER(ct.model) LIKE :term OR ")
+                    .append("LOWER(ct.category) LIKE :term")
+                    .append(")");
+            hasTerm = true;
+        }
 
-                    return false;
-                })
-                .collect(Collectors.toList());
+        // Create Query
+        TypedQuery<Car> query = em.createQuery(queryBuilder.toString(), Car.class);
+
+        // Set Parameters
+        if (hasStatus) query.setParameter("status", statusEnum);
+        if (hasMinPrice) query.setParameter("minPrice", minPrice);
+        if (hasMaxPrice) query.setParameter("maxPrice", maxPrice);
+        if (hasCarType) query.setParameter("carTypeId", carTypeId);
+        if (hasTerm) query.setParameter("term", term);
+
+        return query.getResultList();
     }
 }

@@ -1,16 +1,38 @@
 services:
+  #MySQL image
+  db:
+    container_name: database
+    image: mysql:8.0.43
+    env_file: .env
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+
   #Payara server
   payara:
-    container_name: payara-ws
+    container_name: payara
     image: payara/server-full:6.2025.8-jdk17
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    env_file: .env
     environment:
       SECURE_ADMIN: "true"
-      ADMIN_USER: "admin"
-      ADMIN_PASSWORD: "admin"
+      ADMIN_USER: "${ADMIN_USER}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
     ports:
       - "8080:8080"   #apps
       - "4848:4848"   #admin console
+      - "${DEBUG_PORT}:${DEBUG_PORT}" #debug JDWP
     volumes:
       #auto deploy (maps local target artefact to container)
-      - ./target/LuxuryCarRentalService-1.0-SNAPSHOT:/opt/payara/appserver/glassfish/domains/domain1/autodeploy/LuxuryCarRentalService-1.0-SNAPSHOT.war
+      - ./docker/post-boot-commands.asadmin:/opt/payara/config/post-boot-commands.asadmin:ro
+      - ./docker/pre-boot-commands.asadmin:/opt/payara/config/pre-boot-commands.asadmin:ro
 
+      - ./target/LuxuryCarRentalService-1.0-SNAPSHOT.war:/opt/payara/deployments/LuxuryCarRentalService-1.0-SNAPSHOT.war
+      - ..LuxuryCarRentalWebapp/target/LuxuryCarRentalWebapp-1.0-SNAPSHOT.war:/opt/payara/deployments/LuxuryCarRentalWebapp-1.0-SNAPSHOT.war
+
+      - ./target/libs/mysql-connector-j-8.0.33.jar:/opt/payara/appserver/glassfish/lib/mysql-connector-j-8.0.33.jar
+volumes:
+  db_data:

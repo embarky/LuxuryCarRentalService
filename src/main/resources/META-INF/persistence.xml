@@ -1,0 +1,20 @@
+<persistence xmlns="https://jakarta.ee/xml/ns/persistence"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence
+             https://jakarta.ee/xml/ns/persistence/persistence_3_0.xsd"
+             version="3.0">
+    <persistence-unit name="LuxuryCarRentalPU" transaction-type="JTA">
+        <jta-data-source>jdbc/LuxuryCarRental</jta-data-source>
+        <class>ch.unil.softarch.luxurycarrental.domain.entities.Admin</class>
+        <class>ch.unil.softarch.luxurycarrental.domain.entities.Customer</class>
+        <class>ch.unil.softarch.luxurycarrental.domain.entities.CarType</class>
+        <class>ch.unil.softarch.luxurycarrental.domain.entities.Car</class>
+        <class>ch.unil.softarch.luxurycarrental.domain.entities.Booking</class>
+        <exclude-unlisted-classes>false</exclude-unlisted-classes>
+        <properties>
+            <property name="jakarta.persistence.schema-generation.database.action" value="create"/>
+            <property name="eclipselink.logging.level" value="FINEST"/>
+            <property name="eclipselink.logging.parameters" value="true"/>
+        </properties>
+    </persistence-unit>
+</persistence>
